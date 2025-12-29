@@ -27,7 +27,7 @@ u = data.control_effort;
 % ==========================================
 val_inicio = 55.8; 
 val_fin    = 18.2; 
-tol        = 0.1;  
+tol        = 0.01;  
 cursor     = 1; % Puntero para recorrer el vector ordenadamente
 
 % Función auxiliar para buscar índices (Inicio -> Fin)
