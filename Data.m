@@ -50,7 +50,7 @@ function [start_idx, end_idx, next_cursor] = buscar_bloque(u_data, cursor_actual
     if isempty(rel_end)
         error('Busqueda:FinNoEncontrado', 'No se encontró el final de la secuencia (valor %.1f).', v_fin);
     end
-    end_idx = start_idx + rel_end - 1;
+    end_idx = start_idx + rel_end - 1 + 47;
     
     % Actualizar cursor para la siguiente búsqueda
     next_cursor = end_idx + 1;
