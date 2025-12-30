@@ -25,9 +25,9 @@ fprintf('Generando datos para NARMA-L2...\n');
 %% --- 2. Generación de Señal de Excitación (Escalones Aleatorios) ---
 % Parámetros de tiempo
 ts = 0.25;           % Tiempo de muestreo (igual al del entrenamiento ANFIS)
-duracion_escalon_min = 2.0; % Tiempo mínimo por escalón (s)
-duracion_escalon_max = 4.0; % Tiempo máximo por escalón (s)
-num_escalones = 700;        % Cantidad de cambios de nivel
+duracion_escalon_min = 0.5; % Tiempo mínimo por escalón (s)
+duracion_escalon_max = 3.0; % Tiempo máximo por escalón (s)
+num_escalones = 100;        % Cantidad de cambios de nivel
 
 % Inicialización
 u_train = [];
