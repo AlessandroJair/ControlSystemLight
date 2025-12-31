@@ -179,6 +179,12 @@ ControlSystemLight/
 │   ├── NF_*.fis                          # Controladores Neuro-Fuzzy
 │   └── Params_Hibrido_Condicional.mat    # Parámetros sistema híbrido
 │
+├── 📁 graficos_modelos/                  # Gráficas de validación de modelos
+│   ├── Fig1_FT_Performance.*             # Validación modelo FT
+│   ├── Fig2_ANFIS_Performance.*          # Validación modelo ANFIS
+│   ├── Fig3_Best_Step.*                  # Mejor respuesta al escalón
+│   └── Fig4_Worst_Step.*                 # Peor respuesta al escalón
+│
 ├── 📄 FTRecognition.m                    # Identificación función transferencia
 ├── 📄 ANFISRecognition.m                 # Identificación modelos ANFIS
 ├── 📄 Data.m                             # Extracción y preprocesamiento
@@ -197,6 +203,8 @@ ControlSystemLight/
 │
 ├── 📄 NFComparison.m                     # Comparación controladores NF
 ├── 📄 BELBICvsHibrido.m                  # Comparación BELBIC vs Híbrido
+├── 📄 CompareModels.m                    # Comparación modelos FT vs ANFIS (EPS)
+├── 📄 CompareModelsPNG.m                 # Comparación modelos FT vs ANFIS (PNG)
 │
 └── 📄 README.md                          # Este archivo
 ```
@@ -471,6 +479,36 @@ Donde los pesos (w1, w2, w3, w4) se ajustan según prioridades de la aplicación
 
 ## Resultados
 
+### Desempeño de Modelos de Identificación
+
+#### Validación de Función de Transferencia
+
+![Rendimiento FT](graficos_modelos/Fig1_FT_Performance.png)
+
+La gráfica muestra la validación de los modelos de función de transferencia identificados para cada lámpara (Azul, Roja y Far Red) comparando la respuesta del modelo con los datos experimentales.
+
+#### Validación de Modelos ANFIS
+
+![Rendimiento ANFIS](graficos_modelos/Fig2_ANFIS_Performance.png)
+
+Validación de los modelos dinámicos ANFIS que capturan las no linealidades del sistema. Los modelos neuro-difusos muestran mejor ajuste en regiones de operación no lineal.
+
+### Análisis Comparativo de Respuesta al Escalón
+
+#### Mejor Rendimiento Observado
+
+![Mejor Escalón](graficos_modelos/Fig3_Best_Step.png)
+
+Respuesta al escalón con el mejor desempeño entre todos los controladores evaluados, mostrando tiempo de establecimiento mínimo, sobrepaso reducido y error en estado estacionario cercano a cero.
+
+#### Escenario Más Desafiante
+
+![Peor Escalón](graficos_modelos/Fig4_Worst_Step.png)
+
+Respuesta bajo las condiciones más desafiantes del sistema, evidenciando la capacidad de los controladores para manejar escenarios adversos y no linealidades del proceso.
+
+---
+
 ### Ubicación de Archivos
 
 Los controladores optimizados se encuentran en `controladores/` con la siguiente información:
@@ -494,6 +532,7 @@ load('controladores/PID_Azul_Optimizado.mat');
 | Controladores NARMA-L2 | `.mat` | Red neuronal + parámetros integral |
 | Controladores Neuro-Fuzzy | `.fis` | Sistema de inferencia difusa |
 | Modelos identificados | `.mat`/`.fis` | Función de transferencia o FIS |
+| Gráficos de validación | `.eps`/`.png` | Figuras de resultados experimentales |
 
 ### Comparación Cualitativa
 
