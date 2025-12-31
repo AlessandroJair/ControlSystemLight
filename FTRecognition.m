@@ -1,7 +1,7 @@
 %% 1. Configuración y Carga de Datos
 clear; clc; close all;
 
-archivo = fullfile('data', 'secuencia_azul.csv');
+archivo = fullfile('data', 'secuencia_fr.csv');
 if ~isfile(archivo)
     error('No se encuentra el archivo %s', archivo);
 end
@@ -10,11 +10,11 @@ data_table = readtable(archivo);
 
 % Datos Físicos (Sin normalizar para conservar unidades reales)
 u_raw   = data_table.u;      % Entrada (PWM)
-y_raw   = data_table.b_l;    % Salida (W/m^2)
+y_raw   = data_table.fr_l;    % Salida (W/m^2)
 t_raw   = data_table.Tiempo_s;
 
 % Calcular el Tiempo de Muestreo (Ts) promedio
-Ts = mean(diff(t_raw));
+Ts = 0.25;
 fprintf('Tiempo de muestreo detectado (Ts): %.4f s\n', Ts);
 
 %% 2. Creación del Objeto iddata
@@ -60,7 +60,7 @@ fprintf('\n--- Función de Transferencia Identificada ---\n');
 sys_tf
 
 % Guardar el modelo
-save(fullfile('data', 'modelo_ft_azul.mat'), 'sys_tf', 'Ts');
+save(fullfile('data', 'modelo_ft_fr.mat'), 'sys_tf', 'Ts');
 
 %% 5. Validación y Métricas
 % Simulamos el modelo con la entrada de VALIDACIÓN

@@ -1,0 +1,202 @@
+clear; clc; close all; rng('shuffle');
+
+% =========================================================================
+% CONFIGURACIÓN
+% =========================================================================
+mpcverbosity('off'); 
+warning('off', 'fuzzy:general:warnEvalfisInputOutOfRange');
+warning('off', 'MPC:computation:QP1'); 
+
+%% --- 1) Carga de Datos ---
+nombre_carpeta_data = 'data';
+nombre_carpeta_out  = 'controladores';
+if ~exist(nombre_carpeta_out, 'dir'), mkdir(nombre_carpeta_out); end
+
+% Cargar archivos
+archivo_params = fullfile(nombre_carpeta_data, 'norm_params_fr.mat');
+load(archivo_params); 
+
+archivo_fis = fullfile(nombre_carpeta_data, 'modelo_fr_dinamico.fis');
+fis = readfis(archivo_fis);
+
+archivo_ft = fullfile(nombre_carpeta_data, 'modelo_ft_fr.mat');
+load(archivo_ft, 'sys_tf');
+
+% Tiempo de muestreo
+ts = 0.25; 
+
+%% --- 2) Modelo Interno MPC ---
+sysd = c2d(ss(sys_tf), ts);
+
+%% --- 3) Configuración del GA (SOLUCIÓN AL ESTANCAMIENTO) ---
+% Variables: [Hp, Hc, Weight_Y, Weight_dU]
+lb = [1,   1,   0.01,  0.01];   
+ub = [40,  30,  10,    10]; 
+
+% --- CAMBIO CLAVE 1: Restricciones Enteras ---
+% Decimos al GA que las variables 1 y 2 (Hp, Hc) SON enteros.
+IntCon = [1, 2]; 
+
+% Opciones GA Agresivas
+opts = optimoptions('ga', ...
+    'PopulationSize', 40, ...         % Población suficiente
+    'MaxGenerations', 20, ...
+    'Display', 'iter', ...
+    'UseParallel', false, ...
+    'CrossoverFraction', 0.6, ...     % Reducir cruce para favorecer mutación
+    'FunctionTolerance', 1e-3, ...
+    'PlotFcn', @gaplotbestf);
+
+ref_val = (max_bl - min_bl) * 0.4 + min_bl; 
+t_final = 30;
+
+ObjFcn = @(vars) fitness_MPC_Robusto(vars, fis, sysd, ts, t_final, ref_val, ...
+    min_u, max_u, min_bl, max_bl, lags_u, lags_y);
+
+fprintf('Iniciando optimización MPC (Con IntCon y Penalización)...\n');
+
+%% --- 4) Ejecutar GA ---
+[best_vars, final_cost] = ga(ObjFcn, 4, [], [], [], [], lb, ub, [], IntCon, opts);
+
+% Resultados
+Hp_opt   = best_vars(1); % Ya son enteros gracias a IntCon
+Hc_opt   = best_vars(2);
+w_y_opt  = best_vars(3); 
+w_du_opt = best_vars(4);
+
+% Corrección lógica final por seguridad
+if Hc_opt > Hp_opt, Hc_opt = Hp_opt; end
+
+fprintf('\n--- RESULTADOS MPC ---\n');
+fprintf('Hp: %d | Hc: %d\n', Hp_opt, Hc_opt);
+fprintf('Wy: %.4f | Wdu: %.4f\n', w_y_opt, w_du_opt);
+fprintf('Costo Final: %.4f\n', final_cost);
+
+save(fullfile(nombre_carpeta_out, 'MPC_FR_Optimizado.mat'), ...
+    'w_y_opt', 'w_du_opt', 'Hp_opt', 'Hc_opt', 'sysd', 'ts');
+
+%% --- 5) Simulación Final ---
+[t, y_real, u_real, y_ref] = simulate_MPC_NARX( ...
+    w_y_opt, w_du_opt, Hp_opt, Hc_opt, ...
+    fis, sysd, ts, t_final, ref_val, ...
+    min_u, max_u, min_bl, max_bl, lags_u, lags_y);
+
+figure('Name', 'MPC Optimizado', 'Color', 'w');
+subplot(2,1,1);
+plot(t, y_ref, 'k--', 'LineWidth', 1.5); hold on;
+plot(t, y_real, 'b', 'LineWidth', 1.5);
+title(['Respuesta Temporal (Costo=' num2str(final_cost,'%.2f') ')']);
+ylabel('W/m^2'); grid on; legend('Ref', 'Salida');
+
+subplot(2,1,2);
+plot(t, u_real, 'r', 'LineWidth', 1.5);
+title('Esfuerzo de Control'); ylabel('PWM'); grid on;
+
+%% =========================================================================
+%  FUNCIONES
+% =========================================================================
+
+function J = fitness_MPC_Robusto(vars, fis, sysd, ts, t_final, ref_val, ...
+                              min_u, max_u, min_bl, max_bl, lags_u, lags_y)
+    
+    Hp   = vars(1); % enteros
+    Hc   = vars(2);
+    w_y  = vars(3);
+    w_du = vars(4);
+    
+    % Corrección dinámica
+    if Hc > Hp
+        Hc = Hp;
+    end
+    
+    [t, y, u, y_ref] = simulate_MPC_NARX( ...
+        w_y, w_du, Hp, Hc, fis, sysd, ts, t_final, ref_val, ...
+        min_u, max_u, min_bl, max_bl, lags_u, lags_y);
+    
+    %% --- COSTOS ---
+    % 1. ITAE
+    e = y_ref - y;
+    ITAE = sum(t .* abs(e)) * ts;
+
+    % 2. Esfuerzo de control
+    control_effort = sum(abs(u)) * ts;
+
+    % 3. Tiempo de establecimiento
+    beta = 0.02;                      % 2%
+    tol = beta * abs(ref_val);
+
+    idx_settle = find(abs(e) > tol, 1, 'last');
+    if isempty(idx_settle)
+        Ts = 0;
+    else
+        Ts = t(idx_settle);
+    end
+
+    J_ts = Ts^2;                      % penalización suave
+
+    %% --- COSTO TOTAL ---
+    gamma = 5;    % peso del tiempo
+    J = ITAE + 0.001 * control_effort + gamma * J_ts;
+end
+
+
+function [t, y_hist, u_hist, y_ref_vec] = simulate_MPC_NARX( ...
+        w_y, w_du, Hp, Hc, fis, sysd, ts, t_final, ref_val, ...
+        min_u, max_u, min_bl, max_bl, lags_u, lags_y)
+
+    % Crear MPC
+    mpcobj = mpc(sysd, ts, Hp, Hc);
+    
+    mpcobj.Weights.OutputVariables = w_y;
+    mpcobj.Weights.ManipulatedVariables = 0; 
+    mpcobj.Weights.ManipulatedVariablesRate = w_du;
+    
+    mpcobj.ManipulatedVariables.Min = min_u;
+    mpcobj.ManipulatedVariables.Max = max_u;
+    mpcobj.OutputVariables.Min = min_bl;
+    mpcobj.OutputVariables.Max = max_bl;
+    
+    mpcobj.Optimizer.MinOutputECR = 1e-10;
+    
+    xc = mpcstate(mpcobj);
+    
+    t = 0:ts:t_final;
+    N = length(t);
+    y_hist = zeros(1,N); u_hist = zeros(1,N);
+    y_ref_vec = ref_val * ones(1,N);
+    
+    buffer_u = min_u * ones(1, lags_u + 1);
+    buffer_y = min_bl * ones(1, lags_y);
+    y_curr = min_bl;
+    
+    for k = 1:N
+        u_mpc = mpcmove(mpcobj, xc, y_curr, ref_val);
+        u_curr = max(min_u, min(max_u, u_mpc));
+        
+        u_hist(k) = u_curr;
+        y_hist(k) = y_curr;
+        
+        buffer_u = [u_curr, buffer_u(1:end-1)];
+        buffer_y = [y_curr, buffer_y(1:end-1)];
+        
+        input_vector = [];
+        for d = 1:lags_y
+            val = buffer_y(d);
+            val_norm = max(0, min(1, (val - min_bl)/(max_bl - min_bl)));
+            input_vector = [input_vector, val_norm]; %#ok<AGROW>
+        end
+        for d = 1:(lags_u + 1)
+            val = buffer_u(d);
+            val_norm = max(0, min(1, (val - min_u)/(max_u - min_u)));
+            input_vector = [input_vector, val_norm]; %#ok<AGROW>
+        end
+        
+        y_next_norm = evalfis(fis, input_vector);
+        y_next = y_next_norm * (max_bl - min_bl) + min_bl;
+        
+        if isnan(y_next) || isinf(y_next)
+             break;
+        end
+        y_curr = y_next;
+    end
+end

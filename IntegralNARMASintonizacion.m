@@ -4,14 +4,14 @@ clear; clc; close all;
 % 1. Configuración Inicial
 % ----------------------------------------------------------
 % Cargar parámetros de normalización (necesarios si el SLX usa el ANFIS)
-if isfile('data/norm_params_azul.mat')
-    load('data/norm_params_azul.mat');
+if isfile('data/norm_params_fr.mat')
+    load('data/norm_params_fr.mat');
     % Enviar al workspace base para que Simulink los vea
     assignin('base', 'min_u', min_u); assignin('base', 'max_u', max_u);
     assignin('base', 'min_bl', min_bl); assignin('base', 'max_bl', max_bl);
     assignin('base', 'lags_u', lags_u); assignin('base', 'lags_y', lags_y);
 else
-    warning('No se cargaron parámetros de normalización (norm_params_azul.mat no encontrado).');
+    warning('No se cargaron parámetros de normalización (norm_params_fr.mat no encontrado).');
 end
 
 % ----------------------------------------------------------
@@ -57,7 +57,7 @@ fprintf("Costo Final  = %.5f\n", bestJ);
 
 % Guardar resultados
 if ~exist('controladores', 'dir'), mkdir('controladores'); end
-save('controladores/NARMA_Optimizado.mat', 'bestKi', 'bestLambda', 'bestJ');
+save('controladores/NARMA_FR_Optimizado.mat', 'bestKi', 'bestLambda', 'bestJ');
 
 
 %% =========================================================

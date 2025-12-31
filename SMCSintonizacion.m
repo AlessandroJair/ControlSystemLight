@@ -11,17 +11,17 @@ carpeta_out  = 'controladores';
 if ~exist(carpeta_out, 'dir'), mkdir(carpeta_out); end
 
 % A. Cargar Parámetros de Normalización y Lags
-file_norm = fullfile(carpeta_data, 'norm_params_azul.mat');
+file_norm = fullfile(carpeta_data, 'norm_params_fr.mat');
 if ~isfile(file_norm), error('Falta %s', file_norm); end
 load(file_norm); % Carga: min_u, max_u, min_bl, max_bl, lags_u, lags_y
 
 % B. Cargar Modelo ANFIS (NARX)
-file_fis = fullfile(carpeta_data, 'modelo_azul_dinamico.fis');
+file_fis = fullfile(carpeta_data, 'modelo_fr_dinamico.fis');
 if ~isfile(file_fis), error('Falta %s', file_fis); end
 fis = readfis(file_fis);
 
 % C. Cargar Función de Transferencia (Para K y T del modelo aproximado)
-file_ft = fullfile(carpeta_data, 'modelo_ft_azul.mat');
+file_ft = fullfile(carpeta_data, 'modelo_ft_fr.mat');
 if ~isfile(file_ft), error('Falta %s', file_ft); end
 load(file_ft, 'sys_tf'); 
 
@@ -48,7 +48,7 @@ ub = [50,   5.0,   5.0];
 
 % Tiempos
 ts = 0.25;       
-t_final = 20;   
+t_final = 30;   
 
 % Referencia: Escalón al 60%
 ref_target = (max_bl - min_bl) * 0.6 + min_bl;
@@ -76,7 +76,7 @@ fprintf('Ks: %.4f | Lambda: %.4f | Phi: %.4f\n', ks_opt, lambda_opt, phi_opt);
 fprintf('ITAE Final: %.4f\n', final_cost);
 
 % Guardar controlador
-save(fullfile(carpeta_out, 'SMC_Optimizado.mat'), ...
+save(fullfile(carpeta_out, 'SMC_FR_Optimizado.mat'), ...
     'ks_opt', 'lambda_opt', 'phi_opt', 'K_model', 'T_model', 'ref_target');
 
 %% --- 4) Simulación Final y Gráficas ---
@@ -114,22 +114,49 @@ title('Superficie de Deslizamiento');
 
 function J = fitness_SMC_ITAE(vars, fis, ts, t_final, ref_val, Km, Tm, ...
                               umin, umax, ymin, ymax, lags_u, lags_y)
-    ks = vars(1); lam = vars(2); phi = vars(3);
-    
-    % Llamar a la simulación con soporte NARX
-    [t, y, ~, ~, ~, is_unstable] = simulate_SMC_NARX(ks, lam, phi, fis, ts, t_final, ...
-                                       ref_val, Km, Tm, umin, umax, ymin, ymax, lags_u, lags_y);
-    
+
+    ks  = vars(1);
+    lam = vars(2);
+    phi = vars(3);
+
+    [t, y, ~, ~, ~, is_unstable] = simulate_SMC_NARX( ...
+        ks, lam, phi, fis, ts, t_final, ref_val, ...
+        Km, Tm, umin, umax, ymin, ymax, lags_u, lags_y);
+
     if is_unstable
-        J = 1e9; % Penalización alta
+        J = 1e9;
         return;
     end
-    
-    % Calcular Error
+
+    %% --- Error ---
     e = ref_val - y;
-    
-    % ITAE
-    J = sum(t .* abs(e)) * ts;
+
+    %% --- ITAE ---
+    J_itae = sum(t .* abs(e)) * ts;
+
+    %% --- Overshoot ---
+    overshoot = max(0, y - ref_val);
+    J_os = sum(t .* overshoot.^2) * ts;
+
+    %% --- Tiempo de establecimiento ---
+    beta = 0.02;  % 2%
+    tol = beta * abs(ref_val);
+
+    idx_settle = find(abs(e) > tol, 1, 'last');
+
+    if isempty(idx_settle)
+        Ts = 0;  % se asentó muy rápido
+    else
+        Ts = t(idx_settle);
+    end
+
+    J_ts = Ts^2;  % penalización cuadrática
+
+    %% --- Costo total ---
+    alpha = 500;   % overshoot
+    gamma = 10;    % tiempo de establecimiento
+
+    J = J_itae + alpha * J_os + gamma * J_ts;
 end
 
 function [t, y_hist, u_hist, ueq_hist, s_hist, is_unstable] = simulate_SMC_NARX(...
@@ -177,12 +204,8 @@ function [t, y_hist, u_hist, ueq_hist, s_hist, is_unstable] = simulate_SMC_NARX(
         ueq_hist(k) = u_eq;
         
         % --- 5. Control de Conmutación (Switching) ---
-        if abs(s) < phi
-            u_sw = ks * (s / phi);
-        else
-            u_sw = ks * sign(s);
-        end
-        
+        u_sw = ks * tanh(s / phi);
+
         % --- 6. Control Total y Saturación ---
         u_total = u_eq + u_sw;
         u_curr = max(min_u, min(max_u, u_total));

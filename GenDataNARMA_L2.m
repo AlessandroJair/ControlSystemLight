@@ -12,11 +12,11 @@ if ~exist(carpeta_destino, 'dir')
 end
 
 % Cargar parámetros y modelo
-archivo_params = fullfile(carpeta_origen, 'norm_params_azul.mat');
+archivo_params = fullfile(carpeta_origen, 'norm_params_fr.mat');
 if ~isfile(archivo_params), error('Falta %s', archivo_params); end
 load(archivo_params); 
 
-archivo_fis = fullfile(carpeta_origen, 'modelo_azul_dinamico.fis');
+archivo_fis = fullfile(carpeta_origen, 'modelo_fr_dinamico.fis');
 if ~isfile(archivo_fis), error('Falta modelo FIS'); end
 fis = readfis(archivo_fis);
 
